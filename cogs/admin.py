@@ -154,7 +154,7 @@ class AdminCog(commands.Cog, name='Admin'):
         if near_x is not None and near_y is not None and near_z is not None and near_radius is not None:
             cmd += f' -near {near_x} {near_y} {near_z} {near_radius}'
         if cmd == 'findObjects':
-            await interaction.followup.send('❌ At least one filter must be provided.', ephemeral=True)
+            await interaction.followup.send('At least one filter must be provided.', ephemeral=True)
             return
         await send_rcon(interaction, cmd)
 

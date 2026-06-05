@@ -14,4 +14,4 @@ async def send_rcon(interaction: discord.Interaction, command: str) -> None:
             text = text[:MAX_LEN] + '\n... (truncated)'
         await interaction.followup.send(f'```\n{text}\n```')
     except Exception as e:
-        await interaction.followup.send(f'❌ RCON error: {e}', ephemeral=True)
+        await interaction.followup.send(f'RCON error: {e}', ephemeral=True)
