@@ -18,22 +18,30 @@ class ScheduleCog(commands.Cog, name='Schedule'):
         self._task: asyncio.Task | None = None
         self._rcon_command: str | None = None
         self._interval: int | None = None
-        self._channel: discord.TextChannel | None = None
+        self._channel_id: int | None = None
+
+    def _get_channel(self) -> discord.abc.Messageable | None:
+        return self.bot.get_channel(self._channel_id)
 
     async def _loop(self):
         while True:
+            channel = self._get_channel()
+            if channel is None:
+                logger.error('Scheduled task: channel %s not found in cache', self._channel_id)
+                await asyncio.sleep(self._interval)
+                continue
             try:
                 result = await rcon(self._rcon_command)
                 text = result.strip() or '(no response)'
                 if len(text) > MAX_LEN:
                     text = text[:MAX_LEN] + '\n... (truncated)'
-                await self._channel.send(f'`{self._rcon_command}` »\n```\n{text}\n```')
+                await channel.send(f'`{self._rcon_command}` »\n```\n{text}\n```')
             except asyncio.CancelledError:
                 return
             except Exception as e:
                 logger.error('Scheduled task error: %s', e)
                 try:
-                    await self._channel.send(f'Scheduled RCON error: {e}')
+                    await channel.send(f'Scheduled RCON error: {e}')
                 except Exception:
                     pass
             await asyncio.sleep(self._interval)
@@ -61,7 +69,7 @@ class ScheduleCog(commands.Cog, name='Schedule'):
 
         self._rcon_command = command
         self._interval = interval
-        self._channel = interaction.channel
+        self._channel_id = interaction.channel_id
         self._task = self.bot.loop.create_task(self._loop())
 
         await interaction.response.send_message(
@@ -82,14 +90,14 @@ class ScheduleCog(commands.Cog, name='Schedule'):
         )
         self._rcon_command = None
         self._interval = None
-        self._channel = None
+        self._channel_id = None
 
     @schedule_group.command(name='status', description='Check if a scheduled RCON command is running')
     @is_admin()
     async def schedule_status(self, interaction: discord.Interaction):
         if self._task and not self._task.done():
             await interaction.response.send_message(
-                f'Running: `{self._rcon_command}` every {self._interval}s, posting to {self._channel.mention}.'
+                f'Running: `{self._rcon_command}` every {self._interval}s, posting to <#{self._channel_id}>.'
             )
         else:
             await interaction.response.send_message('No scheduled task is currently running.')
