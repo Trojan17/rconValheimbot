@@ -20,8 +20,7 @@ class ScheduleCog(commands.Cog, name='Schedule'):
         self._interval: int | None = None
         self._channel_id: int | None = None
 
-    async def _loop(self):
-        channel = self.bot.get_channel(self._channel_id) or await self.bot.fetch_channel(self._channel_id)
+    async def _loop(self, channel: discord.abc.Messageable):
         while True:
             try:
                 result = await rcon(self._rcon_command)
@@ -60,10 +59,18 @@ class ScheduleCog(commands.Cog, name='Schedule'):
             )
             return
 
+        channel = interaction.guild.get_channel(interaction.channel_id)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(interaction.channel_id)
+            except Exception as e:
+                await interaction.response.send_message(f'Cannot access this channel: {e}', ephemeral=True)
+                return
+
         self._rcon_command = command
         self._interval = interval
         self._channel_id = interaction.channel_id
-        self._task = self.bot.loop.create_task(self._loop())
+        self._task = self.bot.loop.create_task(self._loop(channel))
 
         await interaction.response.send_message(
             f'Started: `{command}` will run every {interval}s in this channel.'
