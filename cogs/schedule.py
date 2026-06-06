@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 
 import discord
 from discord import app_commands
@@ -17,40 +16,25 @@ logger = logging.getLogger(__name__)
 class ScheduleCog(commands.Cog, name='Schedule'):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # name -> (rcon_command, interval_secs, channel)
+        self._configs: dict[str, tuple[str, int, discord.abc.Messageable]] = {}
         self._tasks: dict[str, asyncio.Task] = {}
-        self._configs: dict[str, tuple[str, int]] = {}  # name -> (rcon_command, interval_secs)
-        self._channel: discord.abc.Messageable | None = None
-
-    def _get_channel(self, guild: discord.Guild | None = None) -> discord.abc.Messageable | None:
-        if self._channel is not None:
-            return self._channel
-        raw = os.getenv('SCHEDULE_CHANNEL_ID', '').strip()
-        if not raw:
-            return None
-        channel_id = int(raw)
-        for g in ([guild] if guild else self.bot.guilds):
-            if g and (ch := g.get_channel(channel_id)):
-                self._channel = ch
-                return self._channel
-        return None
 
     async def _loop(self, name: str):
-        rcon_cmd, interval = self._configs[name]
+        rcon_cmd, interval, channel = self._configs[name]
         while True:
             try:
                 result = await rcon(rcon_cmd)
                 text = result.strip() or '(no response)'
                 if len(text) > MAX_LEN:
                     text = text[:MAX_LEN] + '\n... (truncated)'
-                if self._channel:
-                    await self._channel.send(f'[{name}] `{rcon_cmd}` »\n```\n{text}\n```')
+                await channel.send(f'[{name}] `{rcon_cmd}` »\n```\n{text}\n```')
             except asyncio.CancelledError:
                 return
             except Exception as e:
                 logger.error('Scheduled task [%s] error: %s', name, e)
                 try:
-                    if self._channel:
-                        await self._channel.send(f'[{name}] RCON error: {e}')
+                    await channel.send(f'[{name}] RCON error: {e}')
                 except Exception:
                     pass
             await asyncio.sleep(interval)
@@ -71,7 +55,8 @@ class ScheduleCog(commands.Cog, name='Schedule'):
             await interaction.followup.send('Interval must be at least 5 seconds.')
             return
 
-        if len([t for t in self._tasks.values() if not t.done()]) >= MAX_TASKS:
+        active = sum(1 for t in self._tasks.values() if not t.done())
+        if active >= MAX_TASKS:
             await interaction.followup.send(f'Maximum of {MAX_TASKS} tasks reached. Use `/schedule remove` first.')
             return
 
@@ -79,21 +64,10 @@ class ScheduleCog(commands.Cog, name='Schedule'):
             await interaction.followup.send(f'Task `{name}` is already running. Use `/schedule remove {name}` first.')
             return
 
-        channel = self._get_channel(interaction.guild)
-        if channel is None:
-            raw = os.getenv('SCHEDULE_CHANNEL_ID', '(not set)')
-            await interaction.followup.send(
-                f'Cannot find schedule output channel (SCHEDULE_CHANNEL_ID={raw}). '
-                'Make sure the env var is set and the bot has View Channel permission there.'
-            )
-            return
-
-        self._configs[name] = (command, interval)
+        self._configs[name] = (command, interval, interaction.channel)
         self._tasks[name] = self.bot.loop.create_task(self._loop(name))
 
-        await interaction.followup.send(
-            f'Started `{name}`: `{command}` every {interval}s → <#{channel.id}>.'
-        )
+        await interaction.followup.send(f'Started `{name}`: `{command}` every {interval}s in this channel.')
 
     @schedule_group.command(name='remove', description='Stop and remove a scheduled task by name')
     @app_commands.describe(name='Name of the task to remove')
@@ -112,7 +86,7 @@ class ScheduleCog(commands.Cog, name='Schedule'):
     @is_admin()
     async def schedule_list(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        running = [(n, cmd, ivl) for n, (cmd, ivl) in self._configs.items()
+        running = [(n, cmd, ivl) for n, (cmd, ivl, _) in self._configs.items()
                    if n in self._tasks and not self._tasks[n].done()]
         if not running:
             await interaction.followup.send('No scheduled tasks running.')
