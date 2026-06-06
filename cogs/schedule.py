@@ -44,63 +44,65 @@ class ScheduleCog(commands.Cog, name='Schedule'):
     @app_commands.describe(
         command='RCON command to run (e.g. "ping 0 40 0")',
         interval='Interval in seconds between runs (default: 30)',
+        channel='Channel to post results in (defaults to current channel)',
     )
     @is_admin()
-    async def schedule_start(self, interaction: discord.Interaction, command: str, interval: int = 30):
+    async def schedule_start(
+        self,
+        interaction: discord.Interaction,
+        command: str,
+        interval: int = 30,
+        channel: discord.TextChannel = None,
+    ):
+        await interaction.response.defer(ephemeral=True)
+
         if interval < 5:
-            await interaction.response.send_message('Interval must be at least 5 seconds.', ephemeral=True)
+            await interaction.followup.send('Interval must be at least 5 seconds.')
             return
 
         if self._task and not self._task.done():
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f'A scheduled task is already running (`{self._rcon_command}` every {self._interval}s). '
-                'Use `/schedule stop` first.',
-                ephemeral=True,
+                'Use `/schedule stop` first.'
             )
             return
 
-        channel = interaction.guild.get_channel(interaction.channel_id)
-        if channel is None:
-            try:
-                channel = await self.bot.fetch_channel(interaction.channel_id)
-            except Exception as e:
-                await interaction.response.send_message(f'Cannot access this channel: {e}', ephemeral=True)
-                return
-
+        target = channel or interaction.channel
         self._rcon_command = command
         self._interval = interval
-        self._channel_id = interaction.channel_id
-        self._task = self.bot.loop.create_task(self._loop(channel))
+        self._channel_id = target.id
+        self._task = self.bot.loop.create_task(self._loop(target))
 
-        await interaction.response.send_message(
-            f'Started: `{command}` will run every {interval}s in this channel.'
+        await interaction.followup.send(
+            f'Started: `{command}` will run every {interval}s in {target.mention}.'
         )
 
     @schedule_group.command(name='stop', description='Stop the currently running scheduled RCON command')
     @is_admin()
     async def schedule_stop(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         if not self._task or self._task.done():
-            await interaction.response.send_message('No scheduled task is currently running.', ephemeral=True)
+            await interaction.followup.send('No scheduled task is currently running.')
             return
 
+        cmd, ivl = self._rcon_command, self._interval
         self._task.cancel()
         self._task = None
-        await interaction.response.send_message(
-            f'Stopped scheduled task (`{self._rcon_command}` every {self._interval}s).'
-        )
         self._rcon_command = None
         self._interval = None
         self._channel_id = None
+        await interaction.followup.send(f'Stopped scheduled task (`{cmd}` every {ivl}s).')
 
     @schedule_group.command(name='status', description='Check if a scheduled RCON command is running')
     @is_admin()
     async def schedule_status(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         if self._task and not self._task.done():
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f'Running: `{self._rcon_command}` every {self._interval}s, posting to <#{self._channel_id}>.'
             )
         else:
-            await interaction.response.send_message('No scheduled task is currently running.')
+            await interaction.followup.send('No scheduled task is currently running.')
 
 
 async def setup(bot: commands.Bot):
