@@ -20,16 +20,9 @@ class ScheduleCog(commands.Cog, name='Schedule'):
         self._interval: int | None = None
         self._channel_id: int | None = None
 
-    def _get_channel(self) -> discord.abc.Messageable | None:
-        return self.bot.get_channel(self._channel_id)
-
     async def _loop(self):
+        channel = self.bot.get_channel(self._channel_id) or await self.bot.fetch_channel(self._channel_id)
         while True:
-            channel = self._get_channel()
-            if channel is None:
-                logger.error('Scheduled task: channel %s not found in cache', self._channel_id)
-                await asyncio.sleep(self._interval)
-                continue
             try:
                 result = await rcon(self._rcon_command)
                 text = result.strip() or '(no response)'
