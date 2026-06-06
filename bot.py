@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-EXTENSIONS = ['cogs.server', 'cogs.players', 'cogs.chat', 'cogs.admin']
+EXTENSIONS = ['cogs.server', 'cogs.players', 'cogs.chat', 'cogs.admin', 'cogs.schedule']
 
 
 class ValheimBot(commands.Bot):
