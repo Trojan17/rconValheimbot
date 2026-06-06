@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import discord
 from discord import app_commands
@@ -8,6 +9,7 @@ from checks import is_admin
 from rcon_client import rcon
 
 MAX_LEN = 1900
+logger = logging.getLogger(__name__)
 
 
 class ScheduleCog(commands.Cog, name='Schedule'):
@@ -26,8 +28,14 @@ class ScheduleCog(commands.Cog, name='Schedule'):
                 if len(text) > MAX_LEN:
                     text = text[:MAX_LEN] + '\n... (truncated)'
                 await self._channel.send(f'`{self._rcon_command}` »\n```\n{text}\n```')
+            except asyncio.CancelledError:
+                return
             except Exception as e:
-                await self._channel.send(f'Scheduled RCON error: {e}')
+                logger.error('Scheduled task error: %s', e)
+                try:
+                    await self._channel.send(f'Scheduled RCON error: {e}')
+                except Exception:
+                    pass
             await asyncio.sleep(self._interval)
 
     schedule_group = app_commands.Group(name='schedule', description='Manage recurring RCON commands')
@@ -54,7 +62,7 @@ class ScheduleCog(commands.Cog, name='Schedule'):
         self._rcon_command = command
         self._interval = interval
         self._channel = interaction.channel
-        self._task = asyncio.get_event_loop().create_task(self._loop())
+        self._task = self.bot.loop.create_task(self._loop())
 
         await interaction.response.send_message(
             f'Started: `{command}` will run every {interval}s in this channel.'
